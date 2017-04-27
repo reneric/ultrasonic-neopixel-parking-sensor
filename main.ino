@@ -66,7 +66,7 @@ void loop() {
 
   Serial.print(distance);
   Serial.println(" cm");
-  FastLED.show();
+  
   delay(10);
 }
 
@@ -126,5 +126,7 @@ void lightItUp(const primaryColor, const secondaryColor, uint16_t percentage) {
   for (int i = level; i <= rightStop; i++) {
     leds[i] = secondaryColor;
   }
+
+  FastLED.show();
 }
 
