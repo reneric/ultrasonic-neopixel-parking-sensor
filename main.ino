@@ -118,7 +118,7 @@ void lightItUp(const primaryColor, const secondaryColor, uint16_t percentage) {
   }
   
   // Right
-  for (int i = NUM_LEDS; i > rightStop; i++) {
+  for (int i = NUM_LEDS; i > rightStop; --i) {
     leds[i] = primaryColor;
   }
 
