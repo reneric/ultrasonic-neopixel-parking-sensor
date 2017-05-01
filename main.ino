@@ -8,47 +8,63 @@
  Green POS to Arduino pin 10
 */
 
-#define NUM_LEDS 16
+#define NUM_LEDS 60
 
 #define DATA_PIN 7
-#define CLOCK_PIN 13
 
 // Define the array of leds
 CRGB leds[NUM_LEDS];
-
 
 // Module Pins
 #define trigPin 13
 #define echoPin 12
 
-// LED Pins
-DATA_PIN = 14
-
 // Thresholds (in CM)
-#define RED_THRESHOLD 90
-#define YELLOW_THRESHOLD 150
-#define GREEN_THRESHOLD 210
-#define MAX_THRESHOLD 275
+long SECTION_SIZE = 30;
+long STOP_DISTANCE = 40;
+long WARNING_THRESHOLD = 30;
+long MAX_THRESHOLD = 275;
+
+long RED_THRESHOLD = STOP_DISTANCE;
+long YELLOW_THRESHOLD = RED_THRESHOLD + SECTION_SIZE;
+long GREEN_THRESHOLD = YELLOW_THRESHOLD + SECTION_SIZE;
+
+const int numReadings = 5;
+ 
+int readings[numReadings];      // the readings from the analog input
+int readIndex = 0;              // the index of the current reading
+int total = 0;                  // the running total
+int average = 0;                // the average
 
 void setup() {
   Serial.begin (9600);
 
   // Fast LED Setup
-  LEDS.addLeds<WS2812,DATA_PIN,RGB>(leds,NUM_LEDS);
-  LEDS.setBrightness(84);
+  FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
+  // FastLED.setBrightness(84);
 
   // HC-SR04 Setup
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
+
+  // initialize all the readings to 0:
+  for (int thisReading = 0; thisReading < numReadings; thisReading++) {
+    readings[thisReading] = 0;
+  }
 }
 
 void loop() {
-  long duration, distance;
-  bool red, yellow, green, outOfRange;
+  long distance, lastRun;
+  bool red, yellow, green;
+  total = total - readings[readIndex];
+  readings[readIndex] = calculateDistance();
+  total = total + readings[readIndex];
   
-  distance = calculateDistance();
+  readIndex++;
+  if (readIndex >= numReadings) readIndex = 0;
 
-  outOfRange = distance >= MAX_THRESHOLD || distance <= 0;
+  distance = abs(total / numReadings);
+
   yellow = distance <= YELLOW_THRESHOLD && distance > RED_THRESHOLD;
   red = distance <= RED_THRESHOLD;
   green = distance > YELLOW_THRESHOLD && distance <= GREEN_THRESHOLD;
@@ -56,21 +72,39 @@ void loop() {
   if (red) {
     setRed();
   } else if (yellow) {
-    setYellow();
+    setYellow(distance);
   } else if (green) {
-    setGreen();
+    setGreen(distance);
   } else {
-    Serial.println("Out of range");
     setGreenStandby();
   }
 
+  
+
   Serial.print(distance);
   Serial.println(" cm");
-  
-  delay(10);
+  FastLED.show();
+  delay(1);
 }
 
-int calculateDistance() {
+void lightItUp(const CRGB& pColor, const CRGB& sColor, uint16_t travel) {
+  uint16_t travelFix = travel * (NUM_LEDS/SECTION_SIZE);
+  uint16_t leftStop = travelFix/2;
+  uint16_t rightStop = NUM_LEDS - leftStop;
+  for (int i = 0; i < NUM_LEDS; i++) {
+    if (i < leftStop || i > rightStop) {
+      leds[i] = pColor;
+    } else {
+      leds[i] = sColor;
+    }
+  }
+
+  FastLED.show();
+}
+
+
+long calculateDistance() {
+  long duration;
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
@@ -81,52 +115,21 @@ int calculateDistance() {
   return (duration/2) / 29.1;
 }
 
-void setGreenStandby(long distance) {
-  Serial.println("setGreenStandby");
-  fill_solid(leds, NUM_LEDS, CRGB::Green, 1);
+void setGreenStandby() {
+  return fill_solid(leds, NUM_LEDS, CRGB::Green);
 }
 
-void setRed(long distance) {
-  Serial.println("setRed");
-  long percentage = distance - RED_THRESHOLD;
-  lightItUp(CRGB::Red, CRGB::Yellow, percentage)
+void setRed() {
+  return fill_solid(leds, NUM_LEDS, CRGB::Red);
 }
 
 void setGreen(long distance) {
-  Serial.println("setGreen");
-  long percentage = distance - GREEN_THRESHOLD;
-  fill_solid(leds, NUM_LEDS, CRGB::Green, percentage);
+  long travel = GREEN_THRESHOLD - distance;
+  return lightItUp(CRGB::Yellow, CRGB::Green, travel);
 }
 
 void setYellow(long distance) {
-  Serial.println("setYellow");
-  long percentage = distance - YELLOW_THRESHOLD;
-  lightItUp(CRGB::Yellow, CRGB::Green, percentage);
-}
-
-void lightItUp(const primaryColor, const secondaryColor, uint16_t percentage) {
-  uint16_t leftStop = ceil(percentage/2);
-  uint16_t rightStop = NUM_LEDS - leftStop;
-  Serial.println("lightItUp");
-  Serial.print("leftStop");
-  Serial.println(leftStop);
-  Serial.print("rightStop");
-  Serial.println(rightStop);
-  // Left
-  for (int i = 0; i < level; i++) {
-    leds[i] = primaryColor;
-  }
-  
-  // Right
-  for (int i = NUM_LEDS; i > rightStop; --i) {
-    leds[i] = primaryColor;
-  }
-
-  // Middle
-  for (int i = level; i <= rightStop; i++) {
-    leds[i] = secondaryColor;
-  }
-
-  FastLED.show();
+  long travel = YELLOW_THRESHOLD - distance;
+  return lightItUp(CRGB::Red, CRGB::Yellow, travel);  
 }
 
